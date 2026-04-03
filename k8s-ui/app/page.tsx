@@ -127,7 +127,7 @@ export default function Home() {
 
       {/* Header */}
       <div style={{ borderBottom: '1px solid #E8E8E4', background: 'white', padding: '0 48px', display: 'flex', alignItems: 'center', height: 56 }}>
-        <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 13, fontWeight: 500 }}>k8s-provisioner</span>
+        <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 13, fontWeight: 500 }}>Artemis</span>
         <span style={{ marginLeft: 12, fontFamily: 'IBM Plex Mono, monospace', fontSize: 10, color: '#888', background: '#F2F2EE', padding: '2px 8px', borderRadius: 4 }}>local cluster</span>
         {status && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, alignItems: 'center' }}>
