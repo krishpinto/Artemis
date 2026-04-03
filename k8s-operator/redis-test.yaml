@@ -1,0 +1,7 @@
+apiVersion: krishoperator.dev/v1
+kind: APIService
+metadata:
+  name: my-cache
+  namespace: default
+spec:
+  type: redis

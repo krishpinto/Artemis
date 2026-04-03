@@ -1,0 +1,7 @@
+apiVersion: krishoperator.dev/v1
+kind: APIService
+metadata:
+  name: my-database
+  namespace: default
+spec:
+  type: postgres
