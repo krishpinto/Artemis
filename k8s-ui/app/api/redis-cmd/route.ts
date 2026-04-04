@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   const { key, value } = await req.json()
 
   const redis = new Redis({
-    host: '127.0.0.1',
+    host: process.env.REDIS_HOST || '127.0.0.1',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     connectTimeout: 3000,
     lazyConnect: true

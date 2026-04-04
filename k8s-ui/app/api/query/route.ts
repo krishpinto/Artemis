@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   }
 
   const pg = new Client({
-    host: '127.0.0.1',
+    host: process.env.PG_HOST || '127.0.0.1',
     port: parseInt(process.env.PG_PORT || '5432'),
     user: 'postgres',
     password: 'password123',

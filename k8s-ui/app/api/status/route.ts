@@ -9,7 +9,7 @@ export async function GET() {
 
   try {
     const pg = new Client({
-      host: '127.0.0.1',
+      host: process.env.PG_HOST || '127.0.0.1',
       port: pgPort,
       user: 'postgres',
       password: 'password123',
@@ -35,7 +35,7 @@ export async function GET() {
 
   try {
     const redis = new Redis({
-      host: '127.0.0.1',
+      host: process.env.PG_HOST || '127.0.0.1',
       port: redisPort,
       connectTimeout: 3000,
       lazyConnect: true

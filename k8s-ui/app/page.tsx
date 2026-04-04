@@ -407,7 +407,7 @@ export default function Home() {
               </div>
               <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {[
-                  { label: 'URL', value: `http://127.0.0.1:${process.env.NEXT_PUBLIC_GRAFANA_PORT || ''}` },
+                  { label: 'URL', value: `http://${process.env.NEXT_PUBLIC_GRAFANA_HOST || '127.0.0.1'}:${process.env.NEXT_PUBLIC_GRAFANA_PORT || '3000'}` },
                   { label: 'Username', value: 'admin' },
                   { label: 'Password', value: 'admin' },
                 ].map(({ label, value }) => (
@@ -420,7 +420,7 @@ export default function Home() {
             </div>
             <div className="panel" style={{ padding: 20 }}>
               <p style={{ fontSize: 13, color: '#666' }}>Open Grafana to set up dashboards and visualize your cluster metrics.</p>
-              <button className="btn" style={{ marginTop: 16 }} onClick={() => window.open(`http://127.0.0.1:${process.env.NEXT_PUBLIC_GRAFANA_PORT || '56905'}`, '_blank')}>
+              <button className="btn" style={{ marginTop: 16 }} onClick={() => window.open(`http://${process.env.NEXT_PUBLIC_GRAFANA_HOST || '127.0.0.1'}:${process.env.NEXT_PUBLIC_GRAFANA_PORT || '3000'}`, '_blank')}>
                 Open Grafana →
               </button>
             </div>
