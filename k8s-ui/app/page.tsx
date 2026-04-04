@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 
 const SERVICES = [
   { id: 'postgres', name: 'PostgreSQL', desc: 'Relational database engine', port: '5432', icon: '🐘', tag: 'Database' },
-  { id: 'redis', name: 'Redis', desc: 'In-memory cache & store', port: '6379', icon: '⚡', tag: 'Cache' }
+  { id: 'redis', name: 'Redis', desc: 'In-memory cache & store', port: '6379', icon: '⚡', tag: 'Cache' },
+  { id: 'minio', name: 'MinIO', desc: 'S3-compatible object storage', port: '9001', icon: '🪣', tag: 'Storage' },
+  { id: 'grafana', name: 'Grafana', desc: 'Metrics & monitoring dashboard', port: '3000', icon: '📊', tag: 'Monitoring' }
 ]
 
 export default function Home() {
