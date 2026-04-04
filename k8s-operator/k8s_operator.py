@@ -1,7 +1,11 @@
 import kopf
 import kubernetes
 
-kubernetes.config.load_kube_config()
+try:
+    kubernetes.config.load_incluster_config()
+except kubernetes.config.ConfigException:
+    kubernetes.config.load_kube_config()
+
 apps_v1 = kubernetes.client.AppsV1Api()
 core_v1 = kubernetes.client.CoreV1Api()
 

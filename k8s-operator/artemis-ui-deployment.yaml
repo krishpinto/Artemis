@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: artemis-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artemis-ui
+  template:
+    metadata:
+      labels:
+        app: artemis-ui
+    spec:
+      containers:
+        - name: artemis-ui
+          image: asia-south1-docker.pkg.dev/project-45d8b0cf-b3bf-4fc3-a86/artemis/artemis-ui:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PG_HOST
+              value: "artemis-postgres-svc"
+            - name: PG_PORT
+              value: "5432"
+            - name: REDIS_HOST
+              value: "artemis-redis-svc"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: NEXT_PUBLIC_GRAFANA_HOST
+              value: "34.180.10.171"
+            - name: NEXT_PUBLIC_GRAFANA_PORT
+              value: "3000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: artemis-ui-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: artemis-ui
+  ports:
+    - port: 80
+      targetPort: 3000
