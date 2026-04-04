@@ -14,7 +14,44 @@ def deployment_exists(name, namespace):
             return False
         raise
 
-def make_deployment(name, image, ports, env=None):
+def pvc_exists(name, namespace):
+    try:
+        core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace)
+        return True
+    except kubernetes.client.exceptions.ApiException as e:
+        if e.status == 404:
+            return False
+        raise
+
+def make_pvc(name, storage='1Gi'):
+    # This is the "form" asking GKE for a hard drive
+    # storage='1Gi' means 1 gigabyte
+    return {
+        'apiVersion': 'v1',
+        'kind': 'PersistentVolumeClaim',
+        'metadata': {'name': name},
+        'spec': {
+            'accessModes': ['ReadWriteOnce'],  # only one pod can use it at a time
+            'resources': {'requests': {'storage': storage}}
+            # no storageClassName needed — GKE picks the default automatically
+        }
+    }
+
+def make_deployment(name, image, ports, env=None, volume_name=None, mount_path=None):
+    container = {
+        'name': name,
+        'image': image,
+        'ports': [{'containerPort': p} for p in ports],
+        **(({'env': env}) if env else {})
+    }
+
+    spec = {'containers': [container]}
+
+    # If a volume is requested, attach the PVC and mount it inside the container
+    if volume_name and mount_path:
+        container['volumeMounts'] = [{'name': 'data', 'mountPath': mount_path}]
+        spec['volumes'] = [{'name': 'data', 'persistentVolumeClaim': {'claimName': volume_name}}]
+
     return {
         'apiVersion': 'apps/v1',
         'kind': 'Deployment',
@@ -24,12 +61,7 @@ def make_deployment(name, image, ports, env=None):
             'selector': {'matchLabels': {'app': name}},
             'template': {
                 'metadata': {'labels': {'app': name}},
-                'spec': {'containers': [{
-                    'name': name,
-                    'image': image,
-                    'ports': [{'containerPort': p} for p in ports],
-                    **(({'env': env}) if env else {})
-                }]}
+                'spec': spec
             }
         }
     }
@@ -38,18 +70,40 @@ def make_deployment(name, image, ports, env=None):
 def create_service(spec, name, namespace, **kwargs):
     service_type = spec.get('type')
     deploy_name = f'artemis-{service_type}'
+    pvc_name = f'artemis-{service_type}-pvc'
 
     if deployment_exists(deploy_name, namespace):
         print(f'{service_type} already running, skipping')
         return
 
     if service_type == 'postgres':
-        dep = make_deployment(deploy_name, 'postgres:15', [5432], env=[
-            {'name': 'POSTGRES_PASSWORD', 'value': 'password123'},
-            {'name': 'POSTGRES_DB', 'value': 'mydb'}
-        ])
+        # Create the PVC first, then the deployment pointing at it
+        # /var/lib/postgresql/data is where postgres stores everything
+        if not pvc_exists(pvc_name, namespace):
+            core_v1.create_namespaced_persistent_volume_claim(namespace, make_pvc(pvc_name))
+            print(f'PVC created for postgres')
+        dep = make_deployment(
+            deploy_name, 'postgres:15', [5432],
+            env=[
+                {'name': 'POSTGRES_PASSWORD', 'value': 'password123'},
+                {'name': 'POSTGRES_DB', 'value': 'mydb'},
+                {'name': 'PGDATA', 'value': '/var/lib/postgresql/data/pgdata'}
+            ],
+            volume_name=pvc_name,
+            mount_path='/var/lib/postgresql/data'
+        )
+
     elif service_type == 'redis':
-        dep = make_deployment(deploy_name, 'redis:7', [6379])
+        # /data is where redis dumps its snapshot file
+        if not pvc_exists(pvc_name, namespace):
+            core_v1.create_namespaced_persistent_volume_claim(namespace, make_pvc(pvc_name))
+            print(f'PVC created for redis')
+        dep = make_deployment(
+            deploy_name, 'redis:7', [6379],
+            volume_name=pvc_name,
+            mount_path='/data'
+        )
+
     elif service_type == 'minio':
         dep = {
             'apiVersion': 'apps/v1',
@@ -73,8 +127,10 @@ def create_service(spec, name, namespace, **kwargs):
                 }
             }
         }
+
     elif service_type == 'grafana':
         dep = make_deployment(deploy_name, 'grafana/grafana:latest', [3000])
+
     else:
         print(f'Unknown service type: {service_type}')
         return
