@@ -62,7 +62,7 @@ def create_service(spec, name, namespace, **kwargs):
                     'metadata': {'labels': {'app': deploy_name}},
                     'spec': {'containers': [{
                         'name': deploy_name,
-                        'image': 'minio/minio:latest',
+                        'image': 'quay.io/minio/minio:latest',
                         'args': ['server', '/data', '--console-address', ':9001'],
                         'env': [
                             {'name': 'MINIO_ROOT_USER', 'value': 'admin'},

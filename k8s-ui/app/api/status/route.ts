@@ -4,12 +4,13 @@ import Redis from 'ioredis'
 
 export async function GET() {
   const result: any = { postgres: null, redis: null }
+  const pgPort = parseInt(process.env.PG_PORT || '5432')
+  const redisPort = parseInt(process.env.REDIS_PORT || '6379')
 
-  // Try Postgres
   try {
     const pg = new Client({
       host: '127.0.0.1',
-      port: parseInt(process.env.PG_PORT || '5432'),
+      port: pgPort,
       user: 'postgres',
       password: 'password123',
       database: 'mydb',
@@ -32,11 +33,10 @@ export async function GET() {
     result.postgres = { status: 'disconnected', error: e.message }
   }
 
-  // Try Redis
   try {
     const redis = new Redis({
       host: '127.0.0.1',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
+      port: redisPort,
       connectTimeout: 3000,
       lazyConnect: true
     })
