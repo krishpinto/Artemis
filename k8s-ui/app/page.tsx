@@ -36,10 +36,16 @@ const SERVICES = [
   },
 ];
 
-const SERVICE_STATUS_MAP: Record<string, string> = {
-  postgres: "postgres",
-  redis: "redis",
-};
+const NAV_ITEMS = [
+  { id: "overview", label: "Overview" },
+  { id: "deploy", label: "Deploy" },
+  { id: "postgres", label: "PostgreSQL" },
+  { id: "redis", label: "Redis" },
+  { id: "minio", label: "MinIO" },
+  { id: "grafana", label: "Grafana" },
+] as const;
+
+type Tab = (typeof NAV_ITEMS)[number]["id"];
 
 export default function Home() {
   const [selected, setSelected] = useState<string[]>([]);
@@ -55,9 +61,7 @@ export default function Home() {
   const [redisValue, setRedisValue] = useState("");
   const [redisLoading, setRedisLoading] = useState(false);
   const [redisError, setRedisError] = useState("");
-  const [activeTab, setActiveTab] = useState<
-    "deploy" | "postgres" | "redis" | "minio" | "grafana"
-  >("deploy");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [pods, setPods] = useState<string[]>([]);
 
   const fetchStatus = async () => {
@@ -87,14 +91,21 @@ export default function Home() {
     fetchPods();
   }, []);
 
-  const isDeployed = (serviceId: string) => {
-    return pods.some((p) => p.includes(`artemis-${serviceId}`));
+  const isDeployed = (serviceId: string) =>
+    pods.some((p) => p.includes(`artemis-${serviceId}`));
+
+  const getServiceStatus = (serviceId: string): "connected" | "running" | "stopped" => {
+    if (serviceId === "postgres") return status?.postgres?.status === "connected" ? "connected" : "stopped";
+    if (serviceId === "redis") return status?.redis?.status === "connected" ? "connected" : "stopped";
+    return isDeployed(serviceId) ? "running" : "stopped";
   };
+
+  const isRunning = (serviceId: string) => getServiceStatus(serviceId) !== "stopped";
 
   const toggle = (id: string) => {
     if (isDeployed(id)) return;
     setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
@@ -172,209 +183,550 @@ export default function Home() {
     setRedisLoading(false);
   };
 
+  const clusterConnected = status !== null;
+
   return (
-    <main
+    <div
       style={{
-        minHeight: "100vh",
-        background: "#FAFAF8",
+        display: "flex",
+        height: "100vh",
+        background: "#1a1a1a",
+        color: "white",
         fontFamily: '"IBM Plex Sans", system-ui, sans-serif',
-        color: "#111",
+        overflow: "hidden",
       }}
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        .card { background: white; border: 1.5px solid #E8E8E4; border-radius: 12px; padding: 20px 24px; cursor: pointer; transition: all 0.15s ease; position: relative; overflow: hidden; }
-        .card:hover:not(.deployed) { border-color: #C0C0B8; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-        .card.selected { border-color: #111; }
-        .card.selected::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #111; }
-        .card.deployed { border-color: #22C55E; cursor: default; opacity: 0.8; }
-        .card.deployed::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #22C55E; }
-        .tag { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; color: #888; background: #F2F2EE; padding: 2px 8px; border-radius: 4px; }
-        .tag.running { color: #166534; background: #F0FBF4; }
-        .btn { background: #111; color: white; border: none; padding: 10px 22px; border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
-        .btn:hover:not(:disabled) { background: #333; }
-        .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-        .btn-outline { background: white; color: #111; border: 1.5px solid #E8E8E4; padding: 9px 18px; border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all 0.15s; }
-        .btn-outline:hover { border-color: #111; }
-        .btn-sm { background: white; color: #111; border: 1.5px solid #E8E8E4; padding: 3px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; transition: all 0.15s; }
-        .btn-sm:hover { border-color: #111; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+
+        /* Cards */
+        .card {
+          background: #242424;
+          border: 1px solid #333;
+          border-radius: 10px;
+          padding: 18px 20px;
+          cursor: pointer;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .card:hover:not(.deployed) { border-color: #444; }
+        .card.selected {
+          border-color: #22C55E;
+          box-shadow: 0 0 0 1px rgba(34,197,94,0.15), 0 0 24px rgba(34,197,94,0.06);
+        }
+        .card.deployed {
+          border-color: rgba(34,197,94,0.35);
+          cursor: default;
+        }
+
+        /* Service status cards (overview) */
+        .svc-card {
+          background: #242424;
+          border: 1px solid #333;
+          border-radius: 10px;
+          padding: 20px;
+          transition: border-color 0.15s;
+        }
+        .svc-card:hover { border-color: #444; }
+        .svc-card.running { border-color: rgba(34,197,94,0.25); }
+
+        /* Tags */
+        .tag {
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+          color: #8a8a8a;
+          background: #2e2e2e;
+          border: 1px solid #383838;
+          padding: 2px 7px;
+          border-radius: 4px;
+        }
+        .tag.running { color: #4ade80; background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); }
+        .tag.stopped { color: #8a8a8a; }
+
+        /* Buttons */
+        .btn {
+          background: #22C55E;
+          color: #0a1a0a;
+          border: none;
+          padding: 8px 20px;
+          border-radius: 7px;
+          font-family: 'IBM Plex Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn:hover:not(:disabled) { background: #16a34a; }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .btn-secondary {
+          background: #242424;
+          color: white;
+          border: 1px solid #333;
+          padding: 7px 16px;
+          border-radius: 7px;
+          font-family: 'IBM Plex Sans', sans-serif;
+          font-size: 13px;
+          cursor: pointer;
+          transition: border-color 0.15s, background 0.15s;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-secondary:hover:not(:disabled) { border-color: #555; background: #2a2a2a; }
+        .btn-secondary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        .btn-ghost {
+          background: transparent;
+          color: #8a8a8a;
+          border: 1px solid #333;
+          padding: 5px 12px;
+          border-radius: 6px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 11px;
+          cursor: pointer;
+          transition: border-color 0.15s, color 0.15s;
+        }
+        .btn-ghost:hover { border-color: #555; color: white; }
+
+        /* Status dots */
         .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-        .dot.connected { background: #22C55E; }
-        .dot.disconnected { background: #EF4444; }
+        .dot.green, .dot.connected, .dot.running { background: #22C55E; }
+        .dot.red, .dot.disconnected, .dot.stopped { background: #555; }
         .dot.success { background: #22C55E; }
-        .dot.error { background: #EF4444; }
-        .spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; margin-right: 8px; vertical-align: middle; }
-        .spinner-dark { width: 13px; height: 13px; border: 2px solid #E8E8E4; border-top-color: #111; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; margin-right: 8px; vertical-align: middle; }
+        .dot.error { background: #ef4444; }
+
+        /* Pulse animation for active dots */
+        .dot-pulse {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #22C55E;
+          box-shadow: 0 0 0 0 rgba(34,197,94,0.4);
+          animation: pulse 2s infinite;
+          flex-shrink: 0;
+        }
+        @keyframes pulse {
+          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+          70% { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+        }
+
+        /* Spinner */
+        .spinner {
+          width: 12px; height: 12px;
+          border: 2px solid rgba(10,26,10,0.3);
+          border-top-color: #0a1a0a;
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+          display: inline-block;
+          margin-right: 7px;
+          vertical-align: middle;
+        }
+        .spinner-light {
+          width: 12px; height: 12px;
+          border: 2px solid rgba(255,255,255,0.15);
+          border-top-color: rgba(255,255,255,0.6);
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+          display: inline-block;
+          margin-right: 7px;
+          vertical-align: middle;
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .checkmark { width: 18px; height: 18px; border-radius: 50%; background: #111; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
-        .check-green { width: 18px; height: 18px; border-radius: 50%; background: #22C55E; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
-        .panel { background: white; border: 1.5px solid #E8E8E4; border-radius: 12px; overflow: hidden; }
-        .panel-header { padding: 14px 20px; border-bottom: 1px solid #E8E8E4; display: flex; align-items: center; justify-content: space-between; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 8px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #888; border-bottom: 1px solid #E8E8E4; font-weight: 400; }
-        td { padding: 9px 12px; border-bottom: 1px solid #F4F4F0; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #333; }
+
+        /* Panels */
+        .panel {
+          background: #242424;
+          border: 1px solid #333;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+        .panel-header {
+          padding: 12px 18px;
+          border-bottom: 1px solid #2e2e2e;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th {
+          text-align: left;
+          padding: 8px 14px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          color: #555;
+          border-bottom: 1px solid #2e2e2e;
+          font-weight: 400;
+          text-transform: uppercase;
+        }
+        td {
+          padding: 9px 14px;
+          border-bottom: 1px solid #2a2a2a;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+          color: #ccc;
+        }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: #FAFAF6; }
-        textarea { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 14px; border: 1.5px solid #E8E8E4; border-radius: 8px; resize: vertical; outline: none; background: white; color: #111; line-height: 1.6; }
-        textarea:focus { border-color: #111; }
-        input { font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 10px 14px; border: 1.5px solid #E8E8E4; border-radius: 8px; outline: none; background: white; color: #111; }
-        input:focus { border-color: #111; }
-        .tab { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; background: none; font-family: 'IBM Plex Sans', sans-serif; color: #888; transition: all 0.15s; }
-        .tab.active { background: white; color: #111; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #E8E8E4; }
-        .tab:hover:not(.active) { color: #444; }
-        .result-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
-        .result-row.success { background: #F0FBF4; border: 1px solid #C3E8CF; color: #166534; }
-        .result-row.error { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; }
-        .error-box { background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; padding: 12px 16px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
-        .warn-box { background: #FFFBEB; border: 1px solid #FDE68A; color: #92400E; padding: 12px 16px; border-radius: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
-        .detail-row { display: flex; gap: 16px; align-items: center; }
-        .detail-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #888; width: 120px; flex-shrink: 0; }
-        .detail-value { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #333; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        /* Inputs */
+        textarea {
+          width: 100%;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 13px;
+          padding: 14px 16px;
+          border: 1px solid #333;
+          border-radius: 8px;
+          resize: vertical;
+          outline: none;
+          background: #1e1e1e;
+          color: #e8e8e8;
+          line-height: 1.65;
+          transition: border-color 0.15s;
+        }
+        textarea:focus { border-color: #555; }
+        textarea::placeholder { color: #555; }
+
+        input {
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 13px;
+          padding: 8px 14px;
+          border: 1px solid #333;
+          border-radius: 7px;
+          outline: none;
+          background: #1e1e1e;
+          color: #e8e8e8;
+          transition: border-color 0.15s;
+        }
+        input:focus { border-color: #555; }
+        input::placeholder { color: #555; }
+
+        /* Alerts */
+        .alert-warn {
+          background: rgba(234,179,8,0.07);
+          border: 1px solid rgba(234,179,8,0.2);
+          color: #ca8a04;
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+          line-height: 1.6;
+        }
+        .alert-error {
+          background: rgba(239,68,68,0.07);
+          border: 1px solid rgba(239,68,68,0.2);
+          color: #f87171;
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+          line-height: 1.6;
+        }
+        .result-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          border-radius: 7px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+        }
+        .result-row.success { background: rgba(34,197,94,0.07); border: 1px solid rgba(34,197,94,0.2); color: #4ade80; }
+        .result-row.error { background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
+
+        /* Detail rows */
+        .detail-row { display: flex; gap: 16px; align-items: flex-start; }
+        .detail-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #555; width: 110px; flex-shrink: 0; padding-top: 1px; letter-spacing: 0.04em; }
+        .detail-value { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #ccc; }
+
+        /* Nav item active indicator */
+        .nav-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 7px 12px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-family: 'IBM Plex Sans', sans-serif;
+          font-size: 13px;
+          text-align: left;
+          transition: background 0.1s, color 0.1s;
+          color: #8a8a8a;
+          background: transparent;
+          position: relative;
+        }
+        .nav-item:hover { color: #ccc; background: rgba(255,255,255,0.04); }
+        .nav-item.active { color: white; background: #2a2a2a; }
+        .nav-item.active::before {
+          content: '';
+          position: absolute;
+          left: 0; top: 50%; transform: translateY(-50%);
+          width: 2px; height: 16px;
+          background: #22C55E;
+          border-radius: 1px;
+        }
+
+        /* Check circle */
+        .check { width: 16px; height: 16px; border-radius: 50%; background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.4); color: #4ade80; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+        .check-sel { width: 16px; height: 16px; border-radius: 50%; background: rgba(34,197,94,0.9); color: #0a1a0a; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+
+        /* Page header */
+        .page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+        .page-subtitle { font-size: 13px; color: #8a8a8a; font-weight: 300; }
       `}</style>
 
-      {/* Header */}
-      <div
+      {/* ── SIDEBAR ── */}
+      <aside
         style={{
-          borderBottom: "1px solid #E8E8E4",
-          background: "white",
-          padding: "0 48px",
+          width: 216,
+          background: "#1a1a1a",
+          borderRight: "1px solid #282828",
           display: "flex",
-          alignItems: "center",
-          height: 56,
+          flexDirection: "column",
+          flexShrink: 0,
+          userSelect: "none",
         }}
       >
-        <span
-          style={{
-            fontFamily: "IBM Plex Mono, monospace",
-            fontSize: 13,
-            fontWeight: 500,
-          }}
-        >
-          Artemis
-        </span>
-        <span
-          style={{
-            marginLeft: 12,
-            fontFamily: "IBM Plex Mono, monospace",
-            fontSize: 10,
-            color: "#888",
-            background: "#F2F2EE",
-            padding: "2px 8px",
-            borderRadius: 4,
-          }}
-        >
-          local cluster
-        </span>
-        {status && (
-          <div
-            style={{
-              marginLeft: "auto",
-              display: "flex",
-              gap: 16,
-              alignItems: "center",
-            }}
-          >
-            {["postgres", "redis"].map((s) => (
-              <div
-                key={s}
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <div className={`dot ${status[s]?.status}`} />
-                <span
-                  style={{
-                    fontFamily: "IBM Plex Mono, monospace",
-                    fontSize: 11,
-                    color: "#888",
-                  }}
-                >
-                  {s}
-                </span>
-              </div>
-            ))}
-            <button
-              className="btn-outline"
-              style={{
-                padding: "4px 12px",
-                fontSize: 11,
-                fontFamily: "IBM Plex Mono, monospace",
-              }}
-              onClick={() => {
-                fetchStatus();
-                fetchPods();
-              }}
-            >
-              {statusLoading ? <span className="spinner-dark" /> : "refresh"}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px" }}>
-        {/* Tabs */}
+        {/* Logo */}
         <div
           style={{
-            display: "flex",
-            gap: 4,
-            background: "#F2F2EE",
-            padding: 4,
-            borderRadius: 10,
-            width: "fit-content",
-            marginBottom: 36,
+            padding: "18px 16px 16px",
+            borderBottom: "1px solid #282828",
           }}
         >
-          {(["deploy", "postgres", "redis", "minio", "grafana"] as const).map(
-            (tab) => (
-              <button
-                key={tab}
-                className={`tab ${activeTab === tab ? "active" : ""}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "deploy"
-                  ? "🚀 Deploy"
-                  : tab === "postgres"
-                    ? "🐘 PostgreSQL"
-                    : tab === "redis"
-                      ? "⚡ Redis"
-                      : tab === "minio"
-                        ? "🪣 MinIO"
-                        : "📊 Grafana"}
-              </button>
-            ),
-          )}
+          <div
+            style={{
+              fontFamily: "IBM Plex Mono, monospace",
+              fontSize: 14,
+              fontWeight: 500,
+              letterSpacing: "-0.01em",
+              marginBottom: 8,
+            }}
+          >
+            Artemis
+          </div>
+          <span
+            style={{
+              fontFamily: "IBM Plex Mono, monospace",
+              fontSize: 10,
+              color: "#555",
+              background: "#222",
+              border: "1px solid #2e2e2e",
+              padding: "2px 8px",
+              borderRadius: 4,
+              letterSpacing: "0.04em",
+            }}
+          >
+            GKE • asia-south1
+          </span>
         </div>
 
-        {/* Deploy tab */}
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: "10px 8px" }}>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${activeTab === item.id ? "active" : ""}`}
+              onClick={() => setActiveTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Cluster status */}
+        <div
+          style={{
+            padding: "14px 16px",
+            borderTop: "1px solid #282828",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {clusterConnected ? (
+            <div className="dot-pulse" />
+          ) : (
+            <div
+              className="dot red"
+              style={{ width: 6, height: 6 }}
+            />
+          )}
+          <span
+            style={{
+              fontFamily: "IBM Plex Mono, monospace",
+              fontSize: 11,
+              color: "#555",
+            }}
+          >
+            {clusterConnected ? "cluster connected" : "disconnected"}
+          </span>
+          <button
+            className="btn-ghost"
+            style={{ marginLeft: "auto", padding: "3px 8px", fontSize: 10 }}
+            onClick={() => { fetchStatus(); fetchPods(); }}
+            title="Refresh status"
+          >
+            {statusLoading ? <span className="spinner-light" style={{ margin: 0 }} /> : "↺"}
+          </button>
+        </div>
+      </aside>
+
+      {/* ── MAIN CONTENT ── */}
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "40px 48px",
+          background: "#1a1a1a",
+        }}
+      >
+
+        {/* ── OVERVIEW ── */}
+        {activeTab === "overview" && (
+          <div>
+            <div style={{ marginBottom: 32 }}>
+              <h1 className="page-title">Overview</h1>
+              <p className="page-subtitle">
+                All services provisioned on your Kubernetes cluster.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                gap: 12,
+                marginBottom: 36,
+              }}
+            >
+              {SERVICES.map((s) => {
+                const running = isRunning(s.id);
+                const svcStatus = getServiceStatus(s.id);
+                return (
+                  <div
+                    key={s.id}
+                    className={`svc-card ${running ? "running" : ""}`}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <span style={{ fontSize: 20 }}>{s.icon}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div className={`dot ${running ? "green" : "red"}`} />
+                        <span
+                          className={`tag ${running ? "running" : "stopped"}`}
+                        >
+                          {svcStatus}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 500,
+                        marginBottom: 2,
+                      }}
+                    >
+                      {s.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#8a8a8a",
+                        marginBottom: 14,
+                      }}
+                    >
+                      {s.desc}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "IBM Plex Mono, monospace",
+                        fontSize: 11,
+                        color: "#555",
+                        borderTop: "1px solid #2e2e2e",
+                        paddingTop: 10,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span>:{s.port}</span>
+                      {(s.id === "postgres" || s.id === "redis") && (
+                        <button
+                          className="btn-ghost"
+                          style={{ padding: "2px 8px", fontSize: 10 }}
+                          onClick={() => setActiveTab(s.id as Tab)}
+                        >
+                          open →
+                        </button>
+                      )}
+                      {(s.id === "minio" || s.id === "grafana") && (
+                        <button
+                          className="btn-ghost"
+                          style={{ padding: "2px 8px", fontSize: 10 }}
+                          onClick={() => setActiveTab(s.id as Tab)}
+                        >
+                          details →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                className="btn-secondary"
+                onClick={() => setActiveTab("deploy")}
+              >
+                Deploy services →
+              </button>
+              <span style={{ fontSize: 12, color: "#555" }}>
+                {pods.length} pod{pods.length !== 1 ? "s" : ""} running
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── DEPLOY ── */}
         {activeTab === "deploy" && (
           <div>
-            <h1
-              style={{
-                fontSize: 24,
-                fontWeight: 600,
-                letterSpacing: "-0.02em",
-                marginBottom: 6,
-              }}
-            >
-              Deploy infrastructure
-            </h1>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#666",
-                fontWeight: 300,
-                marginBottom: 28,
-              }}
-            >
-              Select services to provision on your Kubernetes cluster. Already
-              running services are shown in green.
-            </p>
+            <div style={{ marginBottom: 28 }}>
+              <h1 className="page-title">Deploy</h1>
+              <p className="page-subtitle">
+                Provision services on your Kubernetes cluster. Running services
+                are shown with a green border.
+              </p>
+            </div>
+
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
-                gap: 12,
+                gap: 10,
                 marginBottom: 20,
-                maxWidth: 560,
+                maxWidth: 520,
               }}
             >
               {SERVICES.map((s) => {
@@ -394,37 +746,27 @@ export default function Home() {
                         marginBottom: 14,
                       }}
                     >
-                      <span style={{ fontSize: 22 }}>{s.icon}</span>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
+                      <span style={{ fontSize: 20 }}>{s.icon}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                         <span className={`tag ${deployed ? "running" : ""}`}>
                           {deployed ? "running" : s.tag}
                         </span>
-                        {deployed && <div className="check-green">✓</div>}
-                        {!deployed && sel && <div className="checkmark">✓</div>}
+                        {deployed && <div className="check">✓</div>}
+                        {!deployed && sel && <div className="check-sel">✓</div>}
                       </div>
                     </div>
-                    <div
-                      style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}
-                    >
+                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 3 }}>
                       {s.name}
                     </div>
-                    <div
-                      style={{ fontSize: 12, color: "#888", marginBottom: 12 }}
-                    >
+                    <div style={{ fontSize: 12, color: "#8a8a8a", marginBottom: 12 }}>
                       {s.desc}
                     </div>
                     <div
                       style={{
                         fontFamily: "IBM Plex Mono, monospace",
                         fontSize: 11,
-                        color: "#AAA",
-                        borderTop: "1px solid #F0F0EC",
+                        color: "#555",
+                        borderTop: "1px solid #2e2e2e",
                         paddingTop: 10,
                       }}
                     >
@@ -434,6 +776,7 @@ export default function Home() {
                 );
               })}
             </div>
+
             <button
               className="btn"
               onClick={deploy}
@@ -444,14 +787,15 @@ export default function Home() {
                 ? "Provisioning..."
                 : `Deploy ${selected.length > 0 ? `${selected.length} service${selected.length > 1 ? "s" : ""}` : "services"}`}
             </button>
+
             {results.length > 0 && (
               <div
                 style={{
-                  marginTop: 20,
+                  marginTop: 18,
                   display: "flex",
                   flexDirection: "column",
-                  gap: 8,
-                  maxWidth: 560,
+                  gap: 7,
+                  maxWidth: 520,
                 }}
               >
                 {results.map((r, i) => (
@@ -459,12 +803,10 @@ export default function Home() {
                     key={i}
                     className={`result-row ${r.status === "deployed" ? "success" : "error"}`}
                   >
-                    <div
-                      className={`dot ${r.status === "deployed" ? "success" : "error"}`}
-                    />
+                    <div className={`dot ${r.status === "deployed" ? "success" : "error"}`} />
                     <span>{r.service}</span>
                     <span style={{ marginLeft: "auto", opacity: 0.6 }}>
-                      {r.status === "deployed" ? "running" : r.error}
+                      {r.status === "deployed" ? "provisioned" : r.error}
                     </span>
                   </div>
                 ))}
@@ -473,22 +815,50 @@ export default function Home() {
           </div>
         )}
 
-        {/* Postgres tab */}
+        {/* ── POSTGRESQL ── */}
         {activeTab === "postgres" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <h1 className="page-title">PostgreSQL</h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div className={`dot ${status?.postgres?.status === "connected" ? "green" : "red"}`} />
+                  <span
+                    style={{
+                      fontFamily: "IBM Plex Mono, monospace",
+                      fontSize: 11,
+                      color: "#8a8a8a",
+                    }}
+                  >
+                    {status?.postgres?.status || "checking..."}
+                  </span>
+                </div>
+              </div>
+              <p className="page-subtitle">
+                Run SQL queries directly against your PostgreSQL instance.
+              </p>
+            </div>
+
             {status?.postgres?.status === "disconnected" && (
-              <div className="warn-box">
-                Postgres is not connected — {status.postgres.error}. Make sure
+              <div className="alert-warn">
+                PostgreSQL is not connected — {status.postgres.error}. Make sure
                 the service is deployed and the tunnel is running.
               </div>
             )}
+
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#555",
+                  fontFamily: "IBM Plex Mono, monospace",
+                  marginBottom: 8,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Query editor
-              </h2>
-              <p style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
-                Run SQL directly against your PostgreSQL instance.
-              </p>
+              </div>
               <textarea
                 rows={5}
                 value={query}
@@ -509,9 +879,7 @@ export default function Home() {
                 <button
                   className="btn"
                   onClick={runQuery}
-                  disabled={
-                    queryLoading || status?.postgres?.status !== "connected"
-                  }
+                  disabled={queryLoading || status?.postgres?.status !== "connected"}
                 >
                   {queryLoading && <span className="spinner" />}
                   {queryLoading ? "Running..." : "Run query"}
@@ -519,7 +887,7 @@ export default function Home() {
                 <span
                   style={{
                     fontSize: 11,
-                    color: "#AAA",
+                    color: "#555",
                     fontFamily: "IBM Plex Mono, monospace",
                   }}
                 >
@@ -527,15 +895,14 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            {queryError && <div className="error-box">{queryError}</div>}
+
+            {queryError && <div className="alert-error">{queryError}</div>}
+
             {queryResult && (
               <div className="panel">
                 <div className="panel-header">
                   <span
-                    style={{
-                      fontFamily: "IBM Plex Mono, monospace",
-                      fontSize: 12,
-                    }}
+                    style={{ fontFamily: "IBM Plex Mono, monospace", fontSize: 12 }}
                   >
                     results
                   </span>
@@ -543,11 +910,10 @@ export default function Home() {
                     style={{
                       fontFamily: "IBM Plex Mono, monospace",
                       fontSize: 11,
-                      color: "#888",
+                      color: "#555",
                     }}
                   >
-                    {queryResult.rowCount} row
-                    {queryResult.rowCount !== 1 ? "s" : ""}
+                    {queryResult.rowCount} row{queryResult.rowCount !== 1 ? "s" : ""}
                   </span>
                 </div>
                 {queryResult.rows && queryResult.rows.length > 0 ? (
@@ -574,8 +940,8 @@ export default function Home() {
                 ) : (
                   <div
                     style={{
-                      padding: 20,
-                      color: "#AAA",
+                      padding: "18px 18px",
+                      color: "#555",
                       fontSize: 12,
                       fontFamily: "IBM Plex Mono, monospace",
                     }}
@@ -585,26 +951,23 @@ export default function Home() {
                 )}
               </div>
             )}
+
             {status?.postgres?.status === "connected" &&
               Object.keys(status.postgres.tables).length > 0 && (
                 <div>
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      marginBottom: 12,
-                      color: "#444",
+                      fontSize: 11,
+                      color: "#555",
+                      fontFamily: "IBM Plex Mono, monospace",
+                      marginBottom: 10,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
                     }}
                   >
                     Tables
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {Object.entries(status.postgres.tables).map(
                       ([table, rows]: any) => (
                         <div key={table} className="panel">
@@ -618,24 +981,18 @@ export default function Home() {
                             >
                               {table}
                             </span>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 12,
-                                alignItems: "center",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                               <span
                                 style={{
                                   fontFamily: "IBM Plex Mono, monospace",
                                   fontSize: 11,
-                                  color: "#888",
+                                  color: "#555",
                                 }}
                               >
                                 {rows.length} rows
                               </span>
                               <button
-                                className="btn-sm"
+                                className="btn-ghost"
                                 onClick={() => {
                                   setQuery(`SELECT * FROM ${table};`);
                                   runQuery();
@@ -666,40 +1023,69 @@ export default function Home() {
                             </table>
                           )}
                         </div>
-                      ),
+                      )
                     )}
                   </div>
                 </div>
               )}
+
             {status?.postgres?.status === "connected" &&
               Object.keys(status.postgres.tables).length === 0 && (
-                <div className="warn-box">
+                <div className="alert-warn">
                   No tables yet — run a CREATE TABLE query above to get started.
                 </div>
               )}
           </div>
         )}
 
-        {/* Redis tab */}
+        {/* ── REDIS ── */}
         {activeTab === "redis" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <h1 className="page-title">Redis</h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div className={`dot ${status?.redis?.status === "connected" ? "green" : "red"}`} />
+                  <span
+                    style={{
+                      fontFamily: "IBM Plex Mono, monospace",
+                      fontSize: 11,
+                      color: "#8a8a8a",
+                    }}
+                  >
+                    {status?.redis?.status || "checking..."}
+                  </span>
+                </div>
+              </div>
+              <p className="page-subtitle">
+                Write and inspect key-value pairs in your Redis instance.
+              </p>
+            </div>
+
             {status?.redis?.status === "disconnected" && (
-              <div className="warn-box">
+              <div className="alert-warn">
                 Redis is not connected — {status.redis.error}. Make sure the
                 service is deployed and the tunnel is running.
               </div>
             )}
+
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#555",
+                  fontFamily: "IBM Plex Mono, monospace",
+                  marginBottom: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
                 Set key
-              </h2>
-              <p style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
-                Write key-value pairs to your Redis instance.
-              </p>
+              </div>
               <div
                 style={{
                   display: "flex",
-                  gap: 10,
+                  gap: 8,
                   alignItems: "center",
                   flexWrap: "wrap",
                 }}
@@ -708,13 +1094,13 @@ export default function Home() {
                   value={redisKey}
                   onChange={(e) => setRedisKey(e.target.value)}
                   placeholder="key"
-                  style={{ width: 180 }}
+                  style={{ width: 170 }}
                 />
                 <input
                   value={redisValue}
                   onChange={(e) => setRedisValue(e.target.value)}
                   placeholder="value"
-                  style={{ width: 240 }}
+                  style={{ width: 230 }}
                 />
                 <button
                   className="btn"
@@ -731,11 +1117,12 @@ export default function Home() {
                 </button>
               </div>
               {redisError && (
-                <div className="error-box" style={{ marginTop: 10 }}>
+                <div className="alert-error" style={{ marginTop: 10 }}>
                   {redisError}
                 </div>
               )}
             </div>
+
             <div className="panel">
               <div className="panel-header">
                 <span
@@ -751,7 +1138,7 @@ export default function Home() {
                   style={{
                     fontFamily: "IBM Plex Mono, monospace",
                     fontSize: 11,
-                    color: "#888",
+                    color: "#555",
                   }}
                 >
                   {status?.redis?.keys
@@ -781,8 +1168,8 @@ export default function Home() {
               ) : (
                 <div
                   style={{
-                    padding: 20,
-                    color: "#AAA",
+                    padding: "18px 18px",
+                    color: "#555",
                     fontSize: 12,
                     fontFamily: "IBM Plex Mono, monospace",
                   }}
@@ -796,42 +1183,37 @@ export default function Home() {
           </div>
         )}
 
-        {/* Minio tab */}
+        {/* ── MINIO ── */}
         {activeTab === "minio" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
-                MinIO Storage
-              </h2>
-              <p style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
+            <div style={{ marginBottom: 4 }}>
+              <h1 className="page-title">MinIO</h1>
+              <p className="page-subtitle">
                 S3-compatible object storage running on your cluster.
               </p>
             </div>
+
             <div className="panel">
               <div className="panel-header">
                 <span
-                  style={{
-                    fontFamily: "IBM Plex Mono, monospace",
-                    fontSize: 12,
-                    fontWeight: 500,
-                  }}
+                  style={{ fontFamily: "IBM Plex Mono, monospace", fontSize: 12, fontWeight: 500 }}
                 >
                   connection details
                 </span>
               </div>
               <div
                 style={{
-                  padding: 20,
+                  padding: "18px 18px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 14,
                 }}
               >
                 {[
-                  { label: "Console URL", value: "http://127.0.0.1:50462" },
-                  { label: "Access Key", value: "admin" },
-                  { label: "Secret Key", value: "password123" },
-                  { label: "API Endpoint", value: "http://127.0.0.1:9000" },
+                  { label: "CONSOLE_URL", value: "http://127.0.0.1:50462" },
+                  { label: "ACCESS_KEY", value: "admin" },
+                  { label: "SECRET_KEY", value: "password123" },
+                  { label: "API_ENDPOINT", value: "http://127.0.0.1:9000" },
                 ].map(({ label, value }) => (
                   <div key={label} className="detail-row">
                     <span className="detail-label">{label}</span>
@@ -840,7 +1222,8 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className="warn-box">
+
+            <div className="alert-warn">
               MinIO is currently unavailable on this system due to an image
               architecture mismatch. This will work correctly on a real GKE
               cluster.
@@ -848,32 +1231,27 @@ export default function Home() {
           </div>
         )}
 
-        {/* Grafana tab */}
+        {/* ── GRAFANA ── */}
         {activeTab === "grafana" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <div>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
-                Grafana
-              </h2>
-              <p style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
+            <div style={{ marginBottom: 4 }}>
+              <h1 className="page-title">Grafana</h1>
+              <p className="page-subtitle">
                 Metrics and monitoring dashboard for your cluster.
               </p>
             </div>
+
             <div className="panel">
               <div className="panel-header">
                 <span
-                  style={{
-                    fontFamily: "IBM Plex Mono, monospace",
-                    fontSize: 12,
-                    fontWeight: 500,
-                  }}
+                  style={{ fontFamily: "IBM Plex Mono, monospace", fontSize: 12, fontWeight: 500 }}
                 >
                   connection details
                 </span>
               </div>
               <div
                 style={{
-                  padding: 20,
+                  padding: "18px 18px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 14,
@@ -884,8 +1262,8 @@ export default function Home() {
                     label: "URL",
                     value: `http://${process.env.NEXT_PUBLIC_GRAFANA_HOST || "127.0.0.1"}:${process.env.NEXT_PUBLIC_GRAFANA_PORT || "3000"}`,
                   },
-                  { label: "Username", value: "admin" },
-                  { label: "Password", value: "admin" },
+                  { label: "USERNAME", value: "admin" },
+                  { label: "PASSWORD", value: "admin" },
                 ].map(({ label, value }) => (
                   <div key={label} className="detail-row">
                     <span className="detail-label">{label}</span>
@@ -894,18 +1272,18 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className="panel" style={{ padding: 20 }}>
-              <p style={{ fontSize: 13, color: "#666" }}>
+
+            <div>
+              <p style={{ fontSize: 13, color: "#8a8a8a", marginBottom: 16 }}>
                 Open Grafana to set up dashboards and visualize your cluster
                 metrics.
               </p>
               <button
                 className="btn"
-                style={{ marginTop: 16 }}
                 onClick={() =>
                   window.open(
                     `http://${process.env.NEXT_PUBLIC_GRAFANA_HOST || "127.0.0.1"}:${process.env.NEXT_PUBLIC_GRAFANA_PORT || "3000"}`,
-                    "_blank",
+                    "_blank"
                   )
                 }
               >
@@ -914,7 +1292,8 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
-    </main>
+
+      </main>
+    </div>
   );
 }
